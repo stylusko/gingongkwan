@@ -1,0 +1,21 @@
+{
+  "hosting": {
+    "public": "public",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  }
+}
+```
+
+**Commit changes** 클릭
+
+---
+
+### 2. index.html 위치 확인
+
+지금 저장소에 `gingongkwan v3` 파일이 있는데, 이걸 `public/index.html`로 옮겨야 해요.
+
+**Add file** → **Create new file**
+
+파일 이름:
+```
+public/index.html
