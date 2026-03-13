@@ -779,8 +779,14 @@
           html+='</div></div>';
         });
         html+='</div>';
+        // 플레이리스트 내보내기 버튼
+        html+='<div style="display:flex;gap:0.5rem;margin:1rem 0">';
+        html+='<button class="btn btn-sm" style="flex:1;background:#dc2626;color:#fff" onclick="openAllInService(\'youtube\')"><i class="fab fa-youtube"></i> YouTube Music</button>';
+        html+='<button class="btn btn-sm" style="flex:1;background:#fc3c44;color:#fff" onclick="openAllInService(\'apple\')"><i class="fab fa-apple"></i> Apple Music</button>';
+        html+='<button class="btn btn-sm btn-zinc" style="flex:1" onclick="copyPlaylistText()"><i class="fas fa-copy"></i> 복사</button>';
+        html+='</div>';
       }
-      
+
       // 신청곡 요청 버튼 (플레이리스트와 곡 추가 사이, 허용된 경우만, 참가자만, 게스트 모드 제외)
       const isParticipantForRequest=(s.participants||[]).some(p=>p.id===currentUser?.id);
       if(s.allowSongRequest!==false&&!isGuestMode&&isParticipantForRequest){
@@ -1218,6 +1224,24 @@
       showToast('곡 추가됨');
     }
     
+    function openAllInService(service){
+      const tracks=selectedSession.tracks||[];
+      if(!tracks.length){showToast('곡이 없습니다');return;}
+      if(service==='youtube'){
+        tracks.forEach((t,i)=>setTimeout(()=>window.open('https://music.youtube.com/search?q='+encodeURIComponent(t.title+' '+t.artist),'_blank'),i*300));
+      }else if(service==='apple'){
+        tracks.forEach((t,i)=>setTimeout(()=>window.open('https://music.apple.com/search?term='+encodeURIComponent(t.title+' '+t.artist),'_blank'),i*300));
+      }
+      showToast(tracks.length+'곡 검색 중...');
+    }
+    function copyPlaylistText(){
+      const tracks=selectedSession.tracks||[];
+      if(!tracks.length){showToast('곡이 없습니다');return;}
+      const text=tracks.map((t,i)=>(i+1)+'. '+t.title+' - '+t.artist).join('\n');
+      navigator.clipboard.writeText(text);
+      showToast('플레이리스트 복사됨');
+    }
+
     function showEditTrackModal(trackId){
       const t=(selectedSession.tracks||[]).find(x=>x.id===trackId);
       if(!t)return;
