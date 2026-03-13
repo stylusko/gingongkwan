@@ -94,6 +94,7 @@
     const storage=firebase.storage();
     const auth=firebase.auth();
     const googleProvider=new firebase.auth.GoogleAuthProvider();
+    googleProvider.addScope('https://www.googleapis.com/auth/youtube');
     
     // 이미지 압축 함수 (최대 1MB에 가깝게 유지)
     async function compressImage(file,maxBytes=1024*1024){
@@ -314,6 +315,8 @@
       showLoading();
       try{
         const result=await auth.signInWithPopup(googleProvider);
+        const credential=firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+        if(credential&&credential.accessToken)localStorage.setItem('googleAccessToken',credential.accessToken);
         const gu=result.user;
         const email=gu.email,displayName=gu.displayName||email.split('@')[0];
         allUsers=await loadUsers();
@@ -1224,15 +1227,78 @@
       showToast('곡 추가됨');
     }
     
-    function openAllInService(service){
+    async function openAllInService(service){
       const tracks=selectedSession.tracks||[];
       if(!tracks.length){showToast('곡이 없습니다');return;}
       if(service==='youtube'){
-        tracks.forEach((t,i)=>setTimeout(()=>window.open('https://music.youtube.com/search?q='+encodeURIComponent(t.title+' '+t.artist),'_blank'),i*300));
+        await createYouTubePlaylist();
       }else if(service==='apple'){
         tracks.forEach((t,i)=>setTimeout(()=>window.open('https://music.apple.com/search?term='+encodeURIComponent(t.title+' '+t.artist),'_blank'),i*300));
+        showToast(tracks.length+'곡 검색 중...');
       }
-      showToast(tracks.length+'곡 검색 중...');
+    }
+
+    async function getGoogleAccessToken(){
+      let token=localStorage.getItem('googleAccessToken');
+      if(token)return token;
+      // 토큰이 없으면 재로그인
+      try{
+        const result=await auth.signInWithPopup(googleProvider);
+        const credential=firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+        if(credential&&credential.accessToken){
+          localStorage.setItem('googleAccessToken',credential.accessToken);
+          return credential.accessToken;
+        }
+      }catch(e){showToast('Google 인증 필요');return null;}
+      return null;
+    }
+
+    async function ytFetch(url,options={}){
+      const token=await getGoogleAccessToken();
+      if(!token)return null;
+      const res=await fetch(url,{...options,headers:{...options.headers,'Authorization':'Bearer '+token,'Content-Type':'application/json'}});
+      if(res.status===401||res.status===403){
+        localStorage.removeItem('googleAccessToken');
+        showToast('인증 만료 - 다시 시도해주세요');return null;
+      }
+      return res.json();
+    }
+
+    async function createYouTubePlaylist(){
+      const tracks=selectedSession.tracks||[];
+      const title=selectedSession.title||'진공관 플레이리스트';
+      showLoading();
+      try{
+        // 1. 플레이리스트 생성
+        const pl=await ytFetch('https://www.googleapis.com/youtube/v3/playlists?part=snippet',{
+          method:'POST',
+          body:JSON.stringify({snippet:{title:title,description:'진공관에서 자동 생성된 플레이리스트'}})
+        });
+        if(!pl||!pl.id){hideLoading();showToast('플레이리스트 생성 실패');return;}
+        const playlistId=pl.id;
+        let added=0;
+
+        // 2. 각 곡 검색 후 추가
+        for(const t of tracks){
+          const q=t.title+' '+t.artist;
+          const sr=await ytFetch('https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&maxResults=1&q='+encodeURIComponent(q));
+          if(sr&&sr.items&&sr.items.length>0){
+            const videoId=sr.items[0].id.videoId;
+            await ytFetch('https://www.googleapis.com/youtube/v3/playlistItems?part=snippet',{
+              method:'POST',
+              body:JSON.stringify({snippet:{playlistId:playlistId,resourceId:{kind:'youtube#video',videoId:videoId}}})
+            });
+            added++;
+          }
+        }
+
+        hideLoading();
+        showToast(added+'/'+tracks.length+'곡 추가 완료!');
+        window.open('https://music.youtube.com/playlist?list='+playlistId,'_blank');
+      }catch(e){
+        hideLoading();
+        showToast('오류: '+e.message);
+      }
     }
     function copyPlaylistText(){
       const tracks=selectedSession.tracks||[];
