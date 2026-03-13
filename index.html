@@ -1231,7 +1231,8 @@
       const tracks=selectedSession.tracks||[];
       if(!tracks.length){showToast('곡이 없습니다');return;}
       if(service==='youtube'){
-        await createYouTubePlaylist();
+        try{await createYouTubePlaylist();}catch(e){console.error(e);showToast('YouTube 오류: '+e.message);}
+        return;
       }else if(service==='apple'){
         tracks.forEach((t,i)=>setTimeout(()=>window.open('https://music.apple.com/search?term='+encodeURIComponent(t.title+' '+t.artist),'_blank'),i*300));
         showToast(tracks.length+'곡 검색 중...');
@@ -1242,14 +1243,23 @@
       let token=localStorage.getItem('googleAccessToken');
       if(token)return token;
       try{
-        const result=await auth.signInWithPopup(googleProvider);
+        // 이미 로그인되어 있어도 YouTube scope 토큰을 받기 위해 재인증
+        const ytProvider=new firebase.auth.GoogleAuthProvider();
+        ytProvider.addScope('https://www.googleapis.com/auth/youtube');
+        ytProvider.setCustomParameters({prompt:'consent'});
+        const result=await auth.signInWithPopup(ytProvider);
         const credential=firebase.auth.GoogleAuthProvider.credentialFromResult(result);
         if(credential&&credential.accessToken){
           localStorage.setItem('googleAccessToken',credential.accessToken);
           return credential.accessToken;
         }
-      }catch(e){showToast('Google 인증 필요');return null;}
-      return null;
+        showToast('액세스 토큰을 받지 못했습니다');
+        return null;
+      }catch(e){
+        console.error('Google OAuth error:',e);
+        showToast('Google 인증 오류: '+e.message);
+        return null;
+      }
     }
 
     async function ytFetch(url,options={}){
