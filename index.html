@@ -770,7 +770,13 @@
           const l=getMusicLinks(t.title,t.artist);
           html+='<div class="track-item" data-id="'+t.id+'" data-order="'+t.trackOrder+'">';
           if(isAdminMode())html+='<div class="drag-handle" ontouchstart="handleTouchStart(event)" ontouchmove="handleTouchMove(event)" ontouchend="handleTouchEnd(event)"><i class="fas fa-grip-vertical"></i></div>';
-          html+='<div class="track-number">'+(i+1)+'</div><div class="track-info"><div class="track-title">'+escapeHtml(t.title)+'</div><div class="track-artist">'+escapeHtml(t.artist)+'</div>'+(t.recommenderName?'<div class="track-recommender">선곡: '+escapeHtml(maskName(t.recommenderName))+'</div>':'')+'</div><div class="track-links"><a href="'+l.youtube+'" target="_blank" class="track-link track-link-youtube"><i class="fab fa-youtube"></i></a><a href="'+l.spotify+'" target="_blank" class="track-link track-link-spotify"><i class="fab fa-spotify"></i></a><a href="'+l.apple+'" target="_blank" class="track-link track-link-apple"><i class="fab fa-apple"></i></a></div></div>';
+          html+='<div class="track-number">'+(i+1)+'</div><div class="track-info"><div class="track-title">'+escapeHtml(t.title)+'</div><div class="track-artist">'+escapeHtml(t.artist)+'</div>'+(t.recommenderName?'<div class="track-recommender">선곡: '+escapeHtml(maskName(t.recommenderName))+'</div>':'')+'</div>';
+          html+='<div class="track-links"><a href="'+l.youtube+'" target="_blank" class="track-link track-link-youtube"><i class="fab fa-youtube"></i></a><a href="'+l.spotify+'" target="_blank" class="track-link track-link-spotify"><i class="fab fa-spotify"></i></a><a href="'+l.apple+'" target="_blank" class="track-link track-link-apple"><i class="fab fa-apple"></i></a>';
+          if(isAdminMode()){
+            html+='<button class="track-link" style="background:#3f3f46;color:#fff;border:none;cursor:pointer" onclick="showEditTrackModal(\''+t.id+'\')"><i class="fas fa-pen"></i></button>';
+            html+='<button class="track-link" style="background:#dc2626;color:#fff;border:none;cursor:pointer" onclick="deleteTrack(\''+t.id+'\')"><i class="fas fa-trash"></i></button>';
+          }
+          html+='</div></div>';
         });
         html+='</div>';
       }
@@ -1211,6 +1217,46 @@
       showToast('곡 추가됨');
     }
     
+    function showEditTrackModal(trackId){
+      const t=(selectedSession.tracks||[]).find(x=>x.id===trackId);
+      if(!t)return;
+      const participants=selectedSession.participants||[];
+      const m=document.createElement('div');m.className='modal-overlay';m.id='editTrackModal';
+      let recOptions='<option value="">선택 안 함</option>';
+      participants.forEach(p=>recOptions+='<option value="'+p.id+'" '+(p.id===t.recommenderId?'selected':'')+'>'+escapeHtml(p.name)+'</option>');
+      m.innerHTML='<div class="modal"><h3 class="modal-title" style="margin-bottom:1rem">곡 수정</h3>'
+        +'<div class="input-group"><label class="input-label">곡 제목</label><input type="text" id="editTrackTitle" class="input input-no-icon" value="'+escapeHtml(t.title)+'"></div>'
+        +'<div class="input-group"><label class="input-label">아티스트</label><input type="text" id="editTrackArtist" class="input input-no-icon" value="'+escapeHtml(t.artist)+'"></div>'
+        +'<div class="input-group"><label class="input-label">선곡한 사람</label><select id="editTrackRecommender" class="input input-no-icon" style="padding-left:1rem">'+recOptions+'</select></div>'
+        +'<div class="modal-actions"><button class="btn btn-zinc" onclick="closeEditTrackModal()">취소</button><button class="btn btn-amber" onclick="saveEditTrack(\''+trackId+'\')">저장</button></div></div>';
+      document.body.appendChild(m);
+    }
+    function closeEditTrackModal(){const m=document.getElementById('editTrackModal');if(m)m.remove();}
+    async function saveEditTrack(trackId){
+      const t=(selectedSession.tracks||[]).find(x=>x.id===trackId);
+      if(!t)return;
+      t.title=document.getElementById('editTrackTitle').value.trim();
+      t.artist=document.getElementById('editTrackArtist').value.trim();
+      const sel=document.getElementById('editTrackRecommender');
+      const selOption=sel.options[sel.selectedIndex];
+      t.recommenderId=sel.value;
+      t.recommenderName=sel.value?selOption.textContent:'';
+      if(!t.title||!t.artist){showToast('제목과 아티스트를 입력하세요');return;}
+      await saveTrack(t);
+      closeEditTrackModal();
+      const c=document.getElementById('tabContent');
+      renderPlaylistTab(c);
+      showToast('수정됨');
+    }
+    async function deleteTrack(trackId){
+      if(!confirm('이 곡을 삭제하시겠습니까?'))return;
+      await db.collection('tracks').doc(trackId).delete();
+      selectedSession.tracks=selectedSession.tracks.filter(t=>t.id!==trackId);
+      const c=document.getElementById('tabContent');
+      renderPlaylistTab(c);
+      showToast('삭제됨');
+    }
+
     async function approveSongRequest(rid){
       const r=(selectedSession.songRequests||[]).find(x=>x.id===rid);if(!r)return;
       r.status='approved';await saveSongRequest(r);
