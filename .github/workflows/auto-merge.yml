@@ -15,12 +15,13 @@ jobs:
           github-token: ${{ secrets.PAT_TOKEN }}
           script: |
             const branch = context.ref.replace('refs/heads/', '');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
             // Check if PR already exists
             const { data: prs } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              head: `${context.repo.owner}:${branch}`,
+              owner, repo,
+              head: `${owner}:${branch}`,
               base: 'main',
               state: 'open'
             });
@@ -30,8 +31,7 @@ jobs:
               pr = prs[0];
             } else {
               const { data: newPr } = await github.rest.pulls.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
+                owner, repo,
                 title: branch.replace('claude/', ''),
                 head: branch,
                 base: 'main'
@@ -39,11 +39,42 @@ jobs:
               pr = newPr;
             }
 
-            await github.rest.pulls.merge({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pr.number,
-              merge_method: 'squash'
-            });
+            // Wait and retry merge (PR may need a moment to become mergeable)
+            for (let attempt = 1; attempt <= 5; attempt++) {
+              try {
+                // Check PR mergeable status
+                const { data: prData } = await github.rest.pulls.get({
+                  owner, repo,
+                  pull_number: pr.number
+                });
 
-            console.log(`PR #${pr.number} merged successfully`);
+                if (prData.mergeable === false) {
+                  console.log(`PR #${pr.number} has conflicts - attempting to update branch`);
+                  try {
+                    await github.rest.pulls.updateBranch({
+                      owner, repo,
+                      pull_number: pr.number
+                    });
+                    // Wait for branch update
+                    await new Promise(r => setTimeout(r, 5000));
+                  } catch (e) {
+                    console.log('Branch update failed:', e.message);
+                  }
+                }
+
+                await github.rest.pulls.merge({
+                  owner, repo,
+                  pull_number: pr.number,
+                  merge_method: 'squash'
+                });
+                console.log(`PR #${pr.number} merged successfully on attempt ${attempt}`);
+                return;
+              } catch (e) {
+                console.log(`Merge attempt ${attempt} failed: ${e.message}`);
+                if (attempt < 5) {
+                  await new Promise(r => setTimeout(r, 3000 * attempt));
+                } else {
+                  throw e;
+                }
+              }
+            }
