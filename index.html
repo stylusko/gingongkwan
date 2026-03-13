@@ -203,7 +203,34 @@
 
     async function init(){
       try{
-        allUsers=await loadUsers();sessions=await loadSessions();
+        // Google redirect 로그인 결과 처리
+        const redirectResult=await auth.getRedirectResult().catch(()=>null);
+        if(redirectResult&&redirectResult.user){
+          const credential=firebase.auth.GoogleAuthProvider.credentialFromResult(redirectResult);
+          if(credential&&credential.accessToken)localStorage.setItem('googleAccessToken',credential.accessToken);
+          // YouTube 토큰 재인증 redirect였으면 토큰만 저장하고 안내
+          if(localStorage.getItem('ytTokenPending')){
+            localStorage.removeItem('ytTokenPending');
+            setTimeout(()=>showToast('YouTube 인증 완료! 다시 플레이리스트 생성을 눌러주세요'),500);
+          }else{
+            // 일반 로그인 redirect
+            const gu=redirectResult.user;
+            const email=gu.email,displayName=gu.displayName||email.split('@')[0];
+            allUsers=await loadUsers();
+            let existing=allUsers.find(u=>u.email===email);
+            if(existing){
+              if(ADMIN_EMAILS.includes(email)&&!existing.isAdmin){existing.isAdmin=true;await saveUser(existing);}
+              currentUser=existing;
+            }else{
+              const isAdminEmail=ADMIN_EMAILS.includes(email);
+              const newUser={id:generateId(),name:displayName,email:email,phone:'',pin:'',isAdmin:isAdminEmail,status:'approved',createdAt:new Date().toISOString(),authProvider:'google',uid:gu.uid};
+              await saveUser(newUser);allUsers.push(newUser);
+              currentUser=newUser;
+            }
+            localStorage.setItem('currentUser',JSON.stringify(currentUser));
+          }
+        }
+        if(!allUsers||!allUsers.length)allUsers=await loadUsers();sessions=await loadSessions();
         const admin=allUsers.find(u=>String(u.phone)===String(DEFAULT_ADMIN.phone));
         if(!admin){await saveUser(DEFAULT_ADMIN);allUsers.push(DEFAULT_ADMIN);}
         else if(!admin.isAdmin||admin.status!=='approved'){admin.isAdmin=true;admin.status='approved';await saveUser(admin);}
@@ -311,35 +338,9 @@
     
     function isAdminMode(){return currentUser&&currentUser.isAdmin&&adminModeOn;}
 
-    async function handleGoogleLogin(){
+    function handleGoogleLogin(){
       showLoading();
-      try{
-        const result=await auth.signInWithPopup(googleProvider);
-        const credential=firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-        if(credential&&credential.accessToken)localStorage.setItem('googleAccessToken',credential.accessToken);
-        const gu=result.user;
-        const email=gu.email,displayName=gu.displayName||email.split('@')[0];
-        allUsers=await loadUsers();
-        // 이메일로 기존 유저 찾기
-        let existing=allUsers.find(u=>u.email===email);
-        if(existing){
-          if(ADMIN_EMAILS.includes(email)&&!existing.isAdmin){existing.isAdmin=true;await saveUser(existing);}
-          currentUser=existing;
-          localStorage.setItem('currentUser',JSON.stringify(currentUser));
-          hideLoading();showTransition(()=>showApp());
-        }else{
-          // 새 유저 생성 (바로 승인)
-          const isAdminEmail=ADMIN_EMAILS.includes(email);
-          const newUser={id:generateId(),name:displayName,email:email,phone:'',pin:'',isAdmin:isAdminEmail,status:'approved',createdAt:new Date().toISOString(),authProvider:'google',uid:gu.uid};
-          await saveUser(newUser);allUsers.push(newUser);
-          currentUser=newUser;
-          localStorage.setItem('currentUser',JSON.stringify(currentUser));
-          hideLoading();showTransition(()=>showApp());
-        }
-      }catch(e){
-        hideLoading();
-        if(e.code!=='auth/popup-closed-by-user'){showToast('Google 로그인 실패: '+e.message);}
-      }
+      auth.signInWithRedirect(googleProvider);
     }
 
     async function handleLogin(){
@@ -1242,24 +1243,13 @@
     async function getGoogleAccessToken(){
       let token=localStorage.getItem('googleAccessToken');
       if(token)return token;
-      try{
-        // 이미 로그인되어 있어도 YouTube scope 토큰을 받기 위해 재인증
-        const ytProvider=new firebase.auth.GoogleAuthProvider();
-        ytProvider.addScope('https://www.googleapis.com/auth/youtube');
-        ytProvider.setCustomParameters({prompt:'consent'});
-        const result=await auth.signInWithPopup(ytProvider);
-        const credential=firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-        if(credential&&credential.accessToken){
-          localStorage.setItem('googleAccessToken',credential.accessToken);
-          return credential.accessToken;
-        }
-        showToast('액세스 토큰을 받지 못했습니다');
-        return null;
-      }catch(e){
-        console.error('Google OAuth error:',e);
-        showToast('Google 인증 오류: '+e.message);
-        return null;
-      }
+      // YouTube scope 토큰을 받기 위해 redirect 재인증
+      const ytProvider=new firebase.auth.GoogleAuthProvider();
+      ytProvider.addScope('https://www.googleapis.com/auth/youtube');
+      ytProvider.setCustomParameters({prompt:'consent'});
+      localStorage.setItem('ytTokenPending','1');
+      auth.signInWithRedirect(ytProvider);
+      return null; // 페이지가 redirect되므로 여기서 끝
     }
 
     async function ytFetch(url,options={}){
