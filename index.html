@@ -348,16 +348,16 @@
         // 이메일로 기존 유저 찾기
         let existing=allUsers.find(u=>u.email===email);
         if(existing){
-          if(existing.status==='rejected'){hideLoading();document.getElementById('rejectedModal').classList.remove('hidden');return;}
-          if(existing.status==='pending'){hideLoading();document.getElementById('pendingModal').classList.remove('hidden');return;}
           currentUser=existing;
           localStorage.setItem('currentUser',JSON.stringify(currentUser));
           hideLoading();showTransition(()=>showApp());
         }else{
-          // 새 유저 생성 (pending 상태)
-          const newUser={id:generateId(),name:displayName,email:email,phone:'',pin:'',isAdmin:false,status:'pending',createdAt:new Date().toISOString(),authProvider:'google',uid:gu.uid};
+          // 새 유저 생성 (바로 승인)
+          const newUser={id:generateId(),name:displayName,email:email,phone:'',pin:'',isAdmin:false,status:'approved',createdAt:new Date().toISOString(),authProvider:'google',uid:gu.uid};
           await saveUser(newUser);allUsers.push(newUser);
-          hideLoading();document.getElementById('pendingModal').classList.remove('hidden');
+          currentUser=newUser;
+          localStorage.setItem('currentUser',JSON.stringify(currentUser));
+          hideLoading();showTransition(()=>showApp());
         }
       }catch(e){
         hideLoading();
@@ -381,14 +381,13 @@
         const existing=allUsers.find(u=>String(u.phone)===cleanPhone&&String(u.pin)===pinStr);
         if(existing){
           if(existing.name!==name){showLoginError('이름이 일치하지 않습니다');setLoginLoading(false);return;}
-          if(existing.status==='rejected'){document.getElementById('rejectedModal').classList.remove('hidden');setLoginLoading(false);return;}
-          if(existing.status==='pending'){document.getElementById('pendingModal').classList.remove('hidden');setLoginLoading(false);return;}
           currentUser=existing;localStorage.setItem('currentUser',JSON.stringify(currentUser));setLoginLoading(false);showTransition(()=>showApp());
         }else{
           const samePhone=allUsers.find(u=>String(u.phone)===cleanPhone);
           if(samePhone){showLoginError('PIN 번호가 일치하지 않습니다');setLoginLoading(false);return;}
-          const newUser={id:generateId(),name,phone:cleanPhone,pin:pinStr,isAdmin:false,status:'pending',createdAt:new Date().toISOString()};
-          await saveUser(newUser);allUsers.push(newUser);document.getElementById('pendingModal').classList.remove('hidden');
+          const newUser={id:generateId(),name,phone:cleanPhone,pin:pinStr,isAdmin:false,status:'approved',createdAt:new Date().toISOString()};
+          await saveUser(newUser);allUsers.push(newUser);
+          currentUser=newUser;localStorage.setItem('currentUser',JSON.stringify(currentUser));setLoginLoading(false);showTransition(()=>showApp());
         }
       }catch(e){showLoginError('로그인 중 오류: '+e.message);}
       setLoginLoading(false);
