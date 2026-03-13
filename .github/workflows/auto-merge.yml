@@ -9,7 +9,13 @@ jobs:
   create-and-merge:
     runs-on: ubuntu-latest
     steps:
-      - name: Create PR and merge
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Create PR, squash merge, and reset branch
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PAT_TOKEN }}
@@ -18,7 +24,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Close any existing open PRs for this branch (may have stale conflicts)
+            // Close any existing open PRs for this branch
             const { data: existingPrs } = await github.rest.pulls.list({
               owner, repo,
               head: `${owner}:${branch}`,
@@ -38,15 +44,14 @@ jobs:
             // Create a fresh PR
             const { data: pr } = await github.rest.pulls.create({
               owner, repo,
-              title: branch.replace('claude/', ''),
+              title: context.payload.head_commit?.message?.split('\n')[0] || branch.replace('claude/', ''),
               head: branch,
               base: 'main'
             });
 
-            // Wait and retry merge (PR may need a moment to become mergeable)
+            // Wait and retry merge
             for (let attempt = 1; attempt <= 5; attempt++) {
               try {
-                // Check PR mergeable status
                 const { data: prData } = await github.rest.pulls.get({
                   owner, repo,
                   pull_number: pr.number
@@ -59,7 +64,6 @@ jobs:
                       owner, repo,
                       pull_number: pr.number
                     });
-                    // Wait for branch update
                     await new Promise(r => setTimeout(r, 5000));
                   } catch (e) {
                     console.log('Branch update failed:', e.message);
@@ -72,7 +76,7 @@ jobs:
                   merge_method: 'squash'
                 });
                 console.log(`PR #${pr.number} merged successfully on attempt ${attempt}`);
-                return;
+                break;
               } catch (e) {
                 console.log(`Merge attempt ${attempt} failed: ${e.message}`);
                 if (attempt < 5) {
@@ -82,3 +86,19 @@ jobs:
                 }
               }
             }
+
+            // After squash merge, reset the claude branch to main's HEAD
+            // This prevents future conflicts caused by squash merge creating
+            // different commit hashes for the same changes
+            const { data: mainRef } = await github.rest.git.getRef({
+              owner, repo,
+              ref: 'heads/main'
+            });
+
+            await github.rest.git.updateRef({
+              owner, repo,
+              ref: `heads/${branch}`,
+              sha: mainRef.object.sha,
+              force: true
+            });
+            console.log(`Branch ${branch} reset to main (${mainRef.object.sha})`);
