@@ -769,7 +769,7 @@
         tracks.forEach((t,i)=>{
           const l=getMusicLinks(t.title,t.artist);
           html+='<div class="track-item" data-id="'+t.id+'" data-order="'+t.trackOrder+'">';
-          if(isAdminMode())html+='<div class="drag-handle" ontouchstart="handleTouchStart(event)" ontouchmove="handleTouchMove(event)" ontouchend="handleTouchEnd(event)"><i class="fas fa-grip-vertical"></i></div>';
+          if(isAdminMode())html+='<div class="drag-handle" ontouchstart="handleTouchStart(event)" ontouchmove="handleTouchMove(event)" ontouchend="handleTouchEnd(event)" onmousedown="handleMouseDown(event)"><i class="fas fa-grip-vertical"></i></div>';
           html+='<div class="track-number">'+(i+1)+'</div><div class="track-info"><div class="track-title">'+escapeHtml(t.title)+'</div><div class="track-artist">'+escapeHtml(t.artist)+'</div>'+(t.recommenderName?'<div class="track-recommender">선곡: '+escapeHtml(maskName(t.recommenderName))+'</div>':'')+'</div>';
           html+='<div class="track-links"><a href="'+l.youtube+'" target="_blank" class="track-link track-link-youtube"><i class="fab fa-youtube"></i></a><a href="'+l.spotify+'" target="_blank" class="track-link track-link-spotify"><i class="fab fa-spotify"></i></a><a href="'+l.apple+'" target="_blank" class="track-link track-link-apple"><i class="fab fa-apple"></i></a>';
           if(isAdminMode()){
@@ -802,49 +802,50 @@
       c.innerHTML=html;
     }
 
-    // 터치 드래그 변수
-    let touchDragItem=null,touchStartY=0;
-    
-    function handleTouchStart(e){
-      // 드래그 핸들에서 시작한 경우만 드래그 모드
-      if(!e.target.closest('.drag-handle'))return;
+    // 드래그 변수 (터치 + 마우스)
+    let dragItem=null,dragStartY=0;
+
+    function dragStart(clientY,e){
+      const handle=e.target.closest('.drag-handle');
+      if(!handle)return;
       e.preventDefault();
-      touchDragItem=e.target.closest('.track-item');
-      if(!touchDragItem)return;
-      touchStartY=e.touches[0].clientY;
-      touchDragItem.style.opacity='0.5';
-      touchDragItem.style.background='rgba(251,191,36,0.2)';
+      dragItem=handle.closest('.track-item');
+      if(!dragItem)return;
+      dragStartY=clientY;
+      dragItem.style.opacity='0.5';
+      dragItem.style.background='rgba(251,191,36,0.2)';
     }
-    
-    function handleTouchMove(e){
-      if(!touchDragItem)return;
+    function dragMove(clientY,e){
+      if(!dragItem)return;
       e.preventDefault();
-      const touchCurrentY=e.touches[0].clientY;
       const list=document.getElementById('trackList');
+      if(!list)return;
       const items=Array.from(list.querySelectorAll('.track-item'));
-      const dragIndex=items.indexOf(touchDragItem);
-      
+      const idx=items.indexOf(dragItem);
       for(let i=0;i<items.length;i++){
-        if(items[i]===touchDragItem)continue;
+        if(items[i]===dragItem)continue;
         const rect=items[i].getBoundingClientRect();
-        const midY=rect.top+rect.height/2;
-        if(touchCurrentY<midY&&i<dragIndex){
-          list.insertBefore(touchDragItem,items[i]);
-          break;
-        }else if(touchCurrentY>midY&&i>dragIndex){
-          list.insertBefore(touchDragItem,items[i].nextSibling);
-          break;
-        }
+        const mid=rect.top+rect.height/2;
+        if(clientY<mid&&i<idx){list.insertBefore(dragItem,items[i]);break;}
+        else if(clientY>mid&&i>idx){list.insertBefore(dragItem,items[i].nextSibling);break;}
       }
     }
-    
-    function handleTouchEnd(e){
-      if(!touchDragItem)return;
-      touchDragItem.style.opacity='';
-      touchDragItem.style.background='';
-      touchDragItem=null;
+    function dragEnd(){
+      if(!dragItem)return;
+      dragItem.style.opacity='';
+      dragItem.style.background='';
+      dragItem=null;
       saveTrackOrder();
     }
+
+    // 터치 이벤트
+    function handleTouchStart(e){dragStart(e.touches[0].clientY,e);}
+    function handleTouchMove(e){dragMove(e.touches[0].clientY,e);}
+    function handleTouchEnd(e){dragEnd();}
+    // 마우스 이벤트
+    function handleMouseDown(e){dragStart(e.clientY,e);if(dragItem){document.addEventListener('mousemove',handleMouseMove);document.addEventListener('mouseup',handleMouseUp);}}
+    function handleMouseMove(e){dragMove(e.clientY,e);}
+    function handleMouseUp(e){dragEnd();document.removeEventListener('mousemove',handleMouseMove);document.removeEventListener('mouseup',handleMouseUp);}
 
     async function saveTrackOrder(){
       const items=document.querySelectorAll('#trackList .track-item');
