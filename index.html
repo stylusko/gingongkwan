@@ -738,7 +738,7 @@
       if((s.hosts||[]).length>0){
         html+='<p style="margin-bottom:0.5rem"><i class="fas fa-crown" style="width:1.5rem;color:#facc15"></i> '+(s.hosts||[]).map(h=>escapeHtml(maskName(h.name))).join(', ')+'</p>';
       }
-      if(s.description)html+='<p style="margin-top:1rem;color:#d1d5db">'+escapeHtml(s.description)+'</p>';
+      if(s.description)html+='<p style="margin-top:1rem;color:#d1d5db;white-space:pre-line">'+escapeHtml(s.description)+'</p>';
       // 구분선 + 참가자 (호스트 먼저)
       if((s.participants||[]).length>0){
         const sortedParticipants=[...(s.participants||[])].sort((a,b)=>{
