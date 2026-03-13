@@ -18,26 +18,30 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // Check if PR already exists
-            const { data: prs } = await github.rest.pulls.list({
+            // Close any existing open PRs for this branch (may have stale conflicts)
+            const { data: existingPrs } = await github.rest.pulls.list({
               owner, repo,
               head: `${owner}:${branch}`,
               base: 'main',
               state: 'open'
             });
 
-            let pr;
-            if (prs.length > 0) {
-              pr = prs[0];
-            } else {
-              const { data: newPr } = await github.rest.pulls.create({
+            for (const oldPr of existingPrs) {
+              console.log(`Closing stale PR #${oldPr.number}`);
+              await github.rest.pulls.update({
                 owner, repo,
-                title: branch.replace('claude/', ''),
-                head: branch,
-                base: 'main'
+                pull_number: oldPr.number,
+                state: 'closed'
               });
-              pr = newPr;
             }
+
+            // Create a fresh PR
+            const { data: pr } = await github.rest.pulls.create({
+              owner, repo,
+              title: branch.replace('claude/', ''),
+              head: branch,
+              base: 'main'
+            });
 
             // Wait and retry merge (PR may need a moment to become mergeable)
             for (let attempt = 1; attempt <= 5; attempt++) {
