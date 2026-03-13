@@ -1199,7 +1199,16 @@
       if(!title||!artist){showToast('곡 제목과 아티스트를 입력하세요');return;}
       const t={id:generateId(),sessionId:selectedSession.id,title,artist,recommenderId:selectedRecommenderId||'',recommenderName:selectedRecommenderName||'',trackOrder:(selectedSession.tracks||[]).length+1};
       selectedRecommenderId='';selectedRecommenderName='';
-      await saveTrack(t);await showSession(selectedSession.id);switchTab('playlist');showToast('곡 추가됨');
+      await saveTrack(t);
+      // 플레이리스트 탭에서 머무르며 입력폼 초기화
+      selectedSession.tracks=await loadTracks(selectedSession.id);
+      const c=document.getElementById('tabContent');
+      renderPlaylistTab(c);
+      document.getElementById('newTrackTitle').value='';
+      document.getElementById('newTrackArtist').value='';
+      const recDisplay=document.getElementById('selectedRecommender');
+      if(recDisplay)recDisplay.textContent='';
+      showToast('곡 추가됨');
     }
     
     async function approveSongRequest(rid){
